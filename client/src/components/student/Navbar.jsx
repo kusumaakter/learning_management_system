@@ -1,55 +1,43 @@
-import React, { useContext, useState, useEffect } from "react";
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { AppContext } from "../../context/AppContext";
+import { useAuth } from "../../hooks/useAuth";
 import { assets } from "../../assets/assets";
-import api from "../../utils/api";
+import { ROUTES, ROLES } from "../../constants/routes";
 
 const Navbar = () => {
-  const { navigate, isEducator } = useContext(AppContext);
+  const { user, isAuthenticated, isLoading, isEducator, isAdmin, logout, navigate } = useAuth();
   const location = useLocation();
   const isColorListPage = location.pathname.includes("/course-list");
 
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const savedUser = localStorage.getItem("user");
-        if (savedUser) {
-          setUser(JSON.parse(savedUser));
-        }
-      } catch (error) {
-        console.error("Auth check error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
   const handleLogout = async () => {
-    try {
-      await api.post("/auth/logout");
-      localStorage.removeItem("user");
-      setUser(null);
-      navigate("/");
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
+    await logout();
   };
 
-  if (loading) {
-    return <div className="h-16 bg-cyan-100/70"></div>; // Loading placeholder
+  // Get role badge color
+  const getRoleBadgeClass = () => {
+    if (isAdmin) return "bg-red-100 text-red-700";
+    if (isEducator) return "bg-purple-100 text-purple-700";
+    return "bg-blue-100 text-blue-700";
+  };
+
+  // Get role label
+  const getRoleLabel = () => {
+    if (isAdmin) return "Admin";
+    if (isEducator) return "Educator";
+    return "Student";
+  };
+
+  if (isLoading) {
+    return <div className="h-16 bg-cyan-100/70"></div>;
   }
 
   return (
     <div
-      className={`flex items-center justify-between px-4 sm:px-10 md:px-14 lg:px-36 border-b border-gray-500 py-4 ${
-        isColorListPage ? "bg-white" : "bg-cyan-100/70"
-      }`}
+      className={`flex items-center justify-between px-4 sm:px-10 md:px-14 lg:px-36 border-b border-gray-500 py-4 ${isColorListPage ? "bg-white" : "bg-cyan-100/70"
+        }`}
     >
       <img
-        onClick={() => navigate("/")}
+        onClick={() => navigate(ROUTES.HOME)}
         src={assets.logo}
         alt="Logo"
         className="w-30 lg:w-32 cursor-pointer h-30 rounded-t-full"
@@ -58,26 +46,61 @@ const Navbar = () => {
       {/* Desktop Menu */}
       <div className="hidden md:flex items-center gap-5 text-gray-500">
         <div className="flex items-center gap-5">
-          {user && (
+          {isAuthenticated && (
             <>
-              <button
-                onClick={() => {
-                  navigate("/educator");
-                }}
-              >
-                {isEducator ? "Educator Dashboard" : "Become Educator"}
-              </button>
-              <Link to="/my-enrollments">My Enrollments</Link>
+              {/* Show Educator Dashboard for educators and admins */}
+              {(isEducator || isAdmin) && (
+                <button
+                  onClick={() => navigate(ROUTES.EDUCATOR)}
+                  className="hover:text-gray-700 transition"
+                >
+                  Educator Dashboard
+                </button>
+              )}
+
+              {/* Show Become Educator for students */}
+              {!isEducator && !isAdmin && (
+                <button
+                  onClick={() => navigate(ROUTES.EDUCATOR)}
+                  className="hover:text-gray-700 transition"
+                >
+                  Become Educator
+                </button>
+              )}
+
+              <Link to={ROUTES.MY_ENROLLMENTS} className="hover:text-gray-700 transition">
+                My Enrollments
+              </Link>
             </>
           )}
         </div>
 
-        {user ? (
+        {isAuthenticated && user ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium">{user.name}</span>
+            {/* Role Badge */}
+            <span className={`text-xs font-medium px-2 py-1 rounded-full ${getRoleBadgeClass()}`}>
+              {getRoleLabel()}
+            </span>
+
+            {/* User Info */}
+            <div className="flex items-center gap-2">
+              {user.imageUrl ? (
+                <img
+                  src={user.imageUrl}
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-medium text-sm">
+                  {user.name?.charAt(0)?.toUpperCase() || "U"}
+                </div>
+              )}
+              <span className="text-sm font-medium text-gray-700">{user.name}</span>
+            </div>
+
             <button
               onClick={handleLogout}
-              className="bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600 transition"
+              className="bg-red-500 text-white px-4 py-2 rounded-full text-sm hover:bg-red-600 transition"
             >
               Logout
             </button>
@@ -85,13 +108,13 @@ const Navbar = () => {
         ) : (
           <div className="flex items-center gap-3">
             <Link
-              to="/login"
+              to={ROUTES.LOGIN}
               className="text-blue-600 font-medium hover:text-blue-700"
             >
               Login
             </Link>
             <Link
-              to="/signup"
+              to={ROUTES.SIGNUP}
               className="bg-blue-600 text-white px-5 py-2 rounded-full hover:bg-blue-700 transition"
             >
               Create Account
@@ -103,25 +126,36 @@ const Navbar = () => {
       {/* Mobile Menu */}
       <div className="md:hidden flex items-center gap-2 sm:gap-5 text-gray-500">
         <div className="flex items-center gap-1 sm:gap-2 max-sm:text-xs">
-          {user && (
+          {isAuthenticated && (
             <>
-              <button
-                onClick={() => {
-                  navigate("/educator");
-                }}
-              >
-                {isEducator ? "Dashboard" : "Educator"}
-              </button>
-              <Link to="/my-enrollments">Enrollments</Link>
+              {(isEducator || isAdmin) && (
+                <button onClick={() => navigate(ROUTES.EDUCATOR)}>
+                  Dashboard
+                </button>
+              )}
+              <Link to={ROUTES.MY_ENROLLMENTS}>Enrollments</Link>
             </>
           )}
         </div>
 
-        {user ? (
+        {isAuthenticated && user ? (
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium max-w-[80px] truncate">
-              {user.name}
-            </span>
+            <div className="flex items-center gap-1">
+              {user.imageUrl ? (
+                <img
+                  src={user.imageUrl}
+                  alt={user.name}
+                  className="w-6 h-6 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-medium text-xs">
+                  {user.name?.charAt(0)?.toUpperCase() || "U"}
+                </div>
+              )}
+              <span className="text-xs font-medium max-w-[60px] truncate">
+                {user.name}
+              </span>
+            </div>
             <button
               onClick={handleLogout}
               className="bg-red-500 text-white px-3 py-1 rounded-full text-xs hover:bg-red-600"
@@ -130,7 +164,7 @@ const Navbar = () => {
             </button>
           </div>
         ) : (
-          <Link to="/login" className="cursor-pointer">
+          <Link to={ROUTES.LOGIN} className="cursor-pointer">
             <img src={assets.user_icon} alt="User" />
           </Link>
         )}

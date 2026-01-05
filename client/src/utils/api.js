@@ -1,11 +1,5 @@
-import axios from 'axios';
+// DEPRECATED: This file is kept for backward compatibility
+// Please use the new api module at src/api/axiosConfig.js instead
 
-const api = axios.create({
-  baseURL: 'http://localhost:4000/api',
-  withCredentials: true, 
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
+import api from "../api/axiosConfig";
 export default api;

@@ -1,17 +1,23 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { generateToken, cookieOptions } from "../utils/generateToken.js";
+import { validateSignup, validateLogin } from "../validators/authValidator.js";
 
-// Sign Up
+/**
+ * Sign Up - Create new user account
+ * @route POST /api/auth/signup
+ */
 export const signup = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role = "student" } = req.body;
 
-    // Validation
-    if (!name || !email || !password) {
+    // Validate input
+    const validation = validateSignup({ name, email, password, role });
+    if (!validation.isValid) {
       return res.status(400).json({
         success: false,
-        message: "সব field fill up করুন",
+        message: "Validation failed",
+        errors: validation.errors,
       });
     }
 
@@ -20,64 +26,71 @@ export const signup = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: "এই email দিয়ে ইতিমধ্যে account আছে",
+        message: "An account with this email already exists",
+      });
+    }
+
+    // Prevent signup as admin (admin must be set manually in DB)
+    if (role === "admin") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot create admin account through signup",
       });
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role: "user", // default user, admin manually set করতে হবে DB তে
+      role,
     });
 
     // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = generateToken({ userId: user._id, role: user.role });
 
-    // Send response
-    res.cookie("token", token, {
-      httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      sameSite: "strict",
-    });
+    // Send response with cookie
+    res.cookie("token", token, cookieOptions);
 
     return res.status(201).json({
       success: true,
-      message: "Account সফলভাবে তৈরি হয়েছে",
+      message: "Account created successfully",
       user: {
         _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        imageUrl: user.imageUrl,
+        profileCompleted: user.profileCompleted,
       },
     });
   } catch (error) {
     console.error("Signup error:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Server error. Please try again later.",
     });
   }
 };
 
-// Login
+/**
+ * Login - Authenticate user
+ * @route POST /api/auth/login
+ */
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validation
-    if (!email || !password) {
+    // Validate input
+    const validation = validateLogin({ email, password });
+    if (!validation.isValid) {
       return res.status(400).json({
         success: false,
-        message: "Email এবং Password দিন",
+        message: "Validation failed",
+        errors: validation.errors,
       });
     }
 
@@ -86,7 +99,7 @@ export const login = async (req, res) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "ভুল email অথবা password",
+        message: "Invalid email or password",
       });
     }
 
@@ -95,50 +108,52 @@ export const login = async (req, res) => {
     if (!isPasswordCorrect) {
       return res.status(401).json({
         success: false,
-        message: "ভুল email অথবা password",
+        message: "Invalid email or password",
       });
     }
 
     // Generate token
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = generateToken({ userId: user._id, role: user.role });
 
-    // Send response
-    res.cookie("token", token, {
-      httpOnly: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      sameSite: "strict",
-    });
+    // Send response with cookie
+    res.cookie("token", token, cookieOptions);
 
     return res.status(200).json({
       success: true,
-      message: "Login সফল হয়েছে",
+      message: "Login successful",
       user: {
         _id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        imageUrl: user.imageUrl,
+        profileCompleted: user.profileCompleted,
       },
     });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Server error. Please try again later.",
     });
   }
 };
 
-// Logout
+/**
+ * Logout - Clear auth cookie
+ * @route POST /api/auth/logout
+ */
 export const logout = (req, res) => {
   try {
-    res.clearCookie("token");
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+
     return res.status(200).json({
       success: true,
-      message: "Logout সফল হয়েছে",
+      message: "Logged out successfully",
     });
   } catch (error) {
     return res.status(500).json({
@@ -148,15 +163,18 @@ export const logout = (req, res) => {
   }
 };
 
-// Get current user
+/**
+ * Get Current User - Returns logged in user's data
+ * @route GET /api/auth/me
+ */
 export const getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.userId).select("-password");
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User পাওয়া যায়নি",
+        message: "User not found",
       });
     }
 
@@ -165,6 +183,89 @@ export const getCurrentUser = async (req, res) => {
       user,
     });
   } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+/**
+ * Check Auth - Verify if user is authenticated
+ * @route GET /api/auth/check
+ */
+export const checkAuth = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("-password");
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        isAuthenticated: false,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      isAuthenticated: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        imageUrl: user.imageUrl,
+        profileCompleted: user.profileCompleted,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      isAuthenticated: false,
+      message: "Server error",
+    });
+  }
+};
+
+/**
+ * Update Profile - Update user profile information
+ * @route PUT /api/auth/profile
+ */
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, bio, phone, imageUrl, expertise } = req.body;
+
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (bio !== undefined) updateData.bio = bio;
+    if (phone !== undefined) updateData.phone = phone;
+    if (imageUrl) updateData.imageUrl = imageUrl;
+    if (expertise) updateData.expertise = expertise;
+
+    // Mark profile as completed if basic info is provided
+    if (name && (bio || phone || imageUrl)) {
+      updateData.profileCompleted = true;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      updateData,
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
