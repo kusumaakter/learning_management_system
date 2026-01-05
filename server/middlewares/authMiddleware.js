@@ -1,10 +1,11 @@
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
 /**
  * Check if user is authenticated
  * Verifies JWT token and attaches user info to request
  */
-export const isAuthenticated = (req, res, next) => {
+export const isAuthenticated = async (req, res, next) => {
   try {
     const token = req.cookies.token;
 
@@ -16,6 +17,17 @@ export const isAuthenticated = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Fetch full user object
+    const user = await User.findById(decoded.userId).select("-password");
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Please login again.",
+      });
+    }
+
+    req.user = user;
     req.userId = decoded.userId;
     req.userRole = decoded.role;
     next();

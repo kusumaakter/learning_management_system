@@ -106,7 +106,20 @@ export const AppContextProvider = (props) => {
 
   // Course utility functions
   const fetchAllCourses = async () => {
-    setAllCourses(dummyCourses);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/courses`);
+      const data = await response.json();
+      if (data.success && data.courses) {
+        setAllCourses(data.courses);
+      } else {
+        // Fallback to dummy courses if API fails
+        setAllCourses(dummyCourses);
+      }
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      // Fallback to dummy courses on error
+      setAllCourses(dummyCourses);
+    }
   };
 
   const calculateRating = (course) => {

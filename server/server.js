@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import connectDB from "./configs/mongodb.js";
 import authRoutes from "./routes/authRoutes.js";
+import courseRoutes from "./routes/courseRoutes.js";
+import educatorRoutes from "./routes/educatorRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -29,6 +31,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/courses", courseRoutes);
+app.use("/api/educator", educatorRoutes);
 
 // Test route (API)
 app.get("/", (req, res) => {

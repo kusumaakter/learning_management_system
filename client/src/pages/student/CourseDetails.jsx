@@ -1,35 +1,91 @@
 import React, { useContext, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { AppContext } from "../../context/AppContext";
 import Loading from "../../components/student/Loading";
 import { assets } from "../../assets/assets";
 import humanizeDuration from "humanize-duration";
 import Footer from "../../components/student/Footer";
-import YouTube from 'react-youtube'
+import YouTube from 'react-youtube';
+import { getCourseByIdApi, enrollInCourseApi } from "../../api/courseApi";
 
 const CourseDetails = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [courseData, setCourseData] = useState(null);
   const [openSections, setOpenSections] = useState({});
   const [isAlreadyEnrolled, setIsAlreadyEnrolled] = useState(false);
-  const [playerData, setPlayerData] = useState(null)
+  const [playerData, setPlayerData] = useState(null);
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollMessage, setEnrollMessage] = useState("");
+
   const {
     allCourses,
     calculateRating,
     calculateChapterTime,
     calculateCourseDuration,
-    calculateNoOfLectures, currency
+    calculateNoOfLectures,
+    currency,
+    isAuthenticated,
+    user,
   } = useContext(AppContext);
+
   const fetchCourseData = async () => {
+    // Try API first, fallback to local data
+    try {
+      const response = await getCourseByIdApi(id);
+      if (response.success) {
+        setCourseData(response.course);
+        setIsAlreadyEnrolled(response.isEnrolled);
+        return;
+      }
+    } catch (error) {
+      console.log("API not available, using local data");
+    }
+    // Fallback to local courses
     const findCourse = allCourses.find((course) => course._id === id);
     setCourseData(findCourse);
   };
+
   useEffect(() => {
     fetchCourseData();
-  }, [allCourses]);
+  }, [allCourses, id]);
 
   const toggleSection = (index) => {
     setOpenSections((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  const handleEnroll = async () => {
+    // Check if authenticated
+    if (!isAuthenticated) {
+      navigate("/login", { state: { from: `/course/${id}` } });
+      return;
+    }
+
+    // Check if already enrolled
+    if (isAlreadyEnrolled) {
+      navigate("/my-enrollments");
+      return;
+    }
+
+    setEnrolling(true);
+    setEnrollMessage("");
+
+    try {
+      const response = await enrollInCourseApi(id);
+      if (response.success) {
+        setIsAlreadyEnrolled(true);
+        setEnrollMessage("Successfully enrolled! Redirecting...");
+        setTimeout(() => {
+          navigate("/my-enrollments");
+        }, 1500);
+      } else {
+        setEnrollMessage(response.message || "Enrollment failed");
+      }
+    } catch (error) {
+      setEnrollMessage(error.response?.data?.message || "Enrollment failed. Please try again.");
+    } finally {
+      setEnrolling(false);
+    }
   };
 
   return courseData ? (
@@ -91,9 +147,8 @@ const CourseDetails = () => {
                       onClick={() => toggleSection(index)}
                     >
                       <img
-                        className={`transform transition-transform ${
-                          openSections[index] ? "rotate-180" : ""
-                        }`}
+                        className={`transform transition-transform ${openSections[index] ? "rotate-180" : ""
+                          }`}
                         src={assets.down_arrow_icon}
                         alt="arrow_icon"
                       />
@@ -107,9 +162,8 @@ const CourseDetails = () => {
                     </p>
                   </div>
                   <div
-                    className={`overflow-hidden transition-all duration-300 ${
-                      openSections[index] ? "max-h-96" : "max-h-0"
-                    }`}
+                    className={`overflow-hidden transition-all duration-300 ${openSections[index] ? "max-h-96" : "max-h-0"
+                      }`}
                   >
                     <ul className="list-disc md:pl-10 pl-4 pr-4 py-2 text-gray-600 border-t border-gray-600">
                       {chapter.chapterContent.map((lecture, i) => (
@@ -123,10 +177,10 @@ const CourseDetails = () => {
                             <p>{lecture.lectureTitle}</p>
                             <div className="flex gap-2">
                               {lecture.lecturePreviewFree && (
-                                <p onClick={()=>setPlayerData({
+                                <p onClick={() => setPlayerData({
                                   videoId: lecture.lectureUrl.split('/').pop()
                                 })}
-                                 className="text-blue-500 cursor-pointer">
+                                  className="text-blue-500 cursor-pointer">
                                   Preview
                                 </p>
                               )}
@@ -158,67 +212,85 @@ const CourseDetails = () => {
                 }}
               ></div>
             </div>
-            
+
           </div>
         </div>
         <div className="max-w-course-card z-10 shadow-custom-card rounded-t md:rounded-none overflow-hidden bg-white min-w-[300px] sm:min-w-[420px]">
 
           {
-             playerData ?
-             <YouTube videoId={playerData.videoId} opts={{playerVars: {autoplay: 1 }}} iframeClassName="w-fu aspect-video"/>
-             :  <img src={courseData.courseThumbnail} alt="" />
+            playerData ?
+              <YouTube videoId={playerData.videoId} opts={{ playerVars: { autoplay: 1 } }} iframeClassName="w-fu aspect-video" />
+              : <img src={courseData.courseThumbnail} alt="" />
           }
-            
-            <div className="p-5">
-              <div className="flex items-center gap-2">
 
-                  <img className="w-3.5" src={assets.time_left_clock_icon} alt="time_left_clock_icon" />
-                
-               
-                <p className="text-red-500"><span className="font-medium">5 days</span>left at the price!</p>
-              </div>
-              <div className="flex gap-3 items-center pt-2">
-                <p className="text-gray-800 nd:text-4xl text-2xl font-semibold">{currency}{(courseData.coursePrice - courseData.discount * courseData.coursePrice / 100).toFixed(2)}</p>
-                <p className="nd:text-lg text-gray-500 line-through">{currency}{courseData.coursePrice}</p>
-                <p className="md:text-lg text-gray-500">{courseData.discount}% off</p>
-              </div>
+          <div className="p-5">
+            <div className="flex items-center gap-2">
 
-              <div className="flex items-center text-sm md:text-default gap-4 pt-2 md:pt-4 text-gray-500">
-                <div className="flex items-center gap-1">
-                  <img src={assets.star} alt="star icon" />
-                  <p>{calculateRating(courseData)}</p>
-                </div>
-                <div className="h-4 w-px bg-gray-500/40"></div>
-                <div className="flex items-center gap-1">
-                  <img src={assets.time_clock_icon} alt="time clock icon" />
-                  <p>{calculateCourseDuration(courseData)}</p>
-                </div>
-                <div className="h-4 w-px bg-gray-500/40"></div>
-                <div className="flex items-center gap-1">
-                  <img src={assets.lesson_icon} alt="lessons icon" />
-                  <p>{calculateNoOfLectures(courseData)} lessons</p>
-                </div>
-              </div>
+              <img className="w-3.5" src={assets.time_left_clock_icon} alt="time_left_clock_icon" />
 
-              <button className="md:mt-6 mt-4 w-full py-3 rounded-2xl bg-blue-600 text-white font-medium">
-                {isAlreadyEnrolled ? 'Already Enrolled' : 'Enroll Now'}
-              </button>
-              <div className="pt-6">
-                <p className="md:text-xl text-lg font-medium text-gray-800">What's in the course?</p>
-                <ul className="ml-4 pt-2 text-sm md:text-default list-disc text-gray-500">
-                  <li>Lifetime access with free updates.</li>
-                  <li>Step-by-step, hands-on project guidance.</li>
-                  <li>Downloadable resources and source code.</li>
-                  <li>Quizzes to test your knowledge.</li>
-                  <li>Certificate of completion.</li>
-                  <li>Quizzes to test your knowledge.</li>
-                </ul>
-              </div>
 
+              <p className="text-red-500"><span className="font-medium">5 days</span>left at the price!</p>
             </div>
+            <div className="flex gap-3 items-center pt-2">
+              <p className="text-gray-800 nd:text-4xl text-2xl font-semibold">{currency}{(courseData.coursePrice - courseData.discount * courseData.coursePrice / 100).toFixed(2)}</p>
+              <p className="nd:text-lg text-gray-500 line-through">{currency}{courseData.coursePrice}</p>
+              <p className="md:text-lg text-gray-500">{courseData.discount}% off</p>
+            </div>
+
+            <div className="flex items-center text-sm md:text-default gap-4 pt-2 md:pt-4 text-gray-500">
+              <div className="flex items-center gap-1">
+                <img src={assets.star} alt="star icon" />
+                <p>{calculateRating(courseData)}</p>
+              </div>
+              <div className="h-4 w-px bg-gray-500/40"></div>
+              <div className="flex items-center gap-1">
+                <img src={assets.time_clock_icon} alt="time clock icon" />
+                <p>{calculateCourseDuration(courseData)}</p>
+              </div>
+              <div className="h-4 w-px bg-gray-500/40"></div>
+              <div className="flex items-center gap-1">
+                <img src={assets.lesson_icon} alt="lessons icon" />
+                <p>{calculateNoOfLectures(courseData)} lessons</p>
+              </div>
+            </div>
+
+            {enrollMessage && (
+              <p className={`md:mt-4 mt-2 text-center text-sm ${enrollMessage.includes('Successfully') ? 'text-green-600' : 'text-red-500'}`}>
+                {enrollMessage}
+              </p>
+            )}
+            <button
+              onClick={handleEnroll}
+              disabled={enrolling}
+              className={`md:mt-6 mt-4 w-full py-3 rounded-2xl font-medium transition-all duration-200 ${isAlreadyEnrolled
+                  ? 'bg-green-600 text-white cursor-pointer hover:bg-green-700'
+                  : enrolling
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                }`}
+            >
+              {enrolling
+                ? 'Enrolling...'
+                : isAlreadyEnrolled
+                  ? 'Go to My Enrollments'
+                  : 'Enroll Now'}
+            </button>
+            <div className="pt-6">
+              <p className="md:text-xl text-lg font-medium text-gray-800">What's in the course?</p>
+              <ul className="ml-4 pt-2 text-sm md:text-default list-disc text-gray-500">
+                <li>Lifetime access with free updates.</li>
+                <li>Step-by-step, hands-on project guidance.</li>
+                <li>Downloadable resources and source code.</li>
+                <li>Quizzes to test your knowledge.</li>
+                <li>Certificate of completion.</li>
+                <li>Quizzes to test your knowledge.</li>
+              </ul>
+            </div>
+
           </div>
+        </div>
       </div>
-      <Footer/>
+      <Footer />
     </>
   ) : (
     <Loading />
