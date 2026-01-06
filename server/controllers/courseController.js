@@ -199,3 +199,77 @@ export const getEnrolledCourses = async (req, res) => {
         res.status(500).json({ success: false, message: "Failed to fetch enrolled courses" });
     }
 };
+
+// Update lecture progress
+export const updateLectureProgress = async (req, res) => {
+    try {
+        const { id } = req.params; // course ID
+        const { lectureId } = req.body;
+        const userId = req.user._id;
+
+        if (!lectureId) {
+            return res.status(400).json({
+                success: false,
+                message: "Lecture ID is required"
+            });
+        }
+
+        // Find the enrollment
+        const enrollment = await Enrollment.findOne({
+            user: userId,
+            course: id,
+        });
+
+        if (!enrollment) {
+            return res.status(404).json({
+                success: false,
+                message: "Enrollment not found"
+            });
+        }
+
+        // Get the course to calculate total lectures
+        const course = await Course.findById(id);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: "Course not found"
+            });
+        }
+
+        // Calculate total number of lectures
+        let totalLectures = 0;
+        course.courseContent.forEach(chapter => {
+            totalLectures += chapter.chapterContent.length;
+        });
+
+        // Add lecture to completed if not already there
+        if (!enrollment.progress.completedLectures.includes(lectureId)) {
+            enrollment.progress.completedLectures.push(lectureId);
+        }
+
+        // Update last accessed lecture
+        enrollment.progress.lastAccessedLecture = lectureId;
+
+        // Calculate percent complete
+        const completedCount = enrollment.progress.completedLectures.length;
+        enrollment.progress.percentComplete = Math.round((completedCount / totalLectures) * 100);
+
+        // Check if course is completed
+        if (enrollment.progress.percentComplete >= 100) {
+            enrollment.status = "completed";
+            enrollment.completedAt = new Date();
+        }
+
+        await enrollment.save();
+
+        res.json({
+            success: true,
+            message: "Progress updated",
+            progress: enrollment.progress,
+            status: enrollment.status
+        });
+    } catch (error) {
+        console.error("Update progress error:", error);
+        res.status(500).json({ success: false, message: "Failed to update progress" });
+    }
+};

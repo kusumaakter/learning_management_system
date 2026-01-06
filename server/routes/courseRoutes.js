@@ -6,6 +6,7 @@ import {
     unenrollFromCourse,
     completeCourse,
     getEnrolledCourses,
+    updateLectureProgress,
 } from "../controllers/courseController.js";
 import { isAuthenticated } from "../middlewares/authMiddleware.js";
 
@@ -20,5 +21,7 @@ router.get("/:id", getCourseById);
 router.post("/:id/enroll", isAuthenticated, enrollInCourse);
 router.delete("/:id/unenroll", isAuthenticated, unenrollFromCourse);
 router.put("/:id/complete", isAuthenticated, completeCourse);
+router.put("/:id/progress", isAuthenticated, updateLectureProgress);
 
 export default router;
+

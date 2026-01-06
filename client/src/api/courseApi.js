@@ -67,3 +67,13 @@ export const getEnrolledStudentsApi = async () => {
     const response = await api.get("/api/educator/students");
     return response.data;
 };
+
+/**
+ * Update lecture progress for a course
+ * @param {string} courseId - Course ID
+ * @param {string} lectureId - Lecture ID to mark as complete
+ */
+export const updateLectureProgressApi = async (courseId, lectureId) => {
+    const response = await api.put(`/api/courses/${courseId}/progress`, { lectureId });
+    return response.data;
+};

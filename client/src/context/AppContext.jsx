@@ -158,15 +158,40 @@ export const AppContextProvider = (props) => {
   };
 
   const fetchUserEnrolledCourses = async () => {
-    setEnrolledCourses(dummyCourses);
+    if (!isAuthenticated) {
+      setEnrolledCourses([]);
+      return;
+    }
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/courses/enrolled`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      if (data.success && data.enrolledCourses) {
+        setEnrolledCourses(data.enrolledCourses);
+      } else {
+        setEnrolledCourses([]);
+      }
+    } catch (error) {
+      console.error('Error fetching enrolled courses:', error);
+      setEnrolledCourses([]);
+    }
+  };
+
+  const refreshEnrolledCourses = () => {
+    fetchUserEnrolledCourses();
   };
 
   // Initialize app
   useEffect(() => {
     checkAuth();
     fetchAllCourses();
-    fetchUserEnrolledCourses();
   }, [checkAuth]);
+
+  // Fetch enrolled courses when auth state changes
+  useEffect(() => {
+    fetchUserEnrolledCourses();
+  }, [isAuthenticated]);
 
   const value = {
     // App config
@@ -197,6 +222,7 @@ export const AppContextProvider = (props) => {
     calculateCourseDuration,
     calculateNoOfLectures,
     fetchUserEnrolledCourses,
+    refreshEnrolledCourses,
   };
 
   return (
